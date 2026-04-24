@@ -57,8 +57,7 @@ async def get_users(
     query = models.User.find()
     
     if tag_ids and len(tag_ids) > 0:
-        for tag_id in tag_ids:
-            query = query.find({"tag_ids": tag_id})
+        query = models.User.find({"tag_ids": {"$all": tag_ids}})
     
     users = await query.skip(offset).limit(limit).to_list()
     return users

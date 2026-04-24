@@ -20,11 +20,12 @@ class UserService {
   }
 
   async getUsers(tagIds?: string[]): Promise<Array<User>> {
-    const params: Record<string, string[]> = {}
+    let url = API_URL + 'users'
     if (tagIds && tagIds.length > 0) {
-      params.tag_ids = tagIds
+      const queryString = tagIds.map((id) => `tag_ids=${encodeURIComponent(id)}`).join('&')
+      url += `?${queryString}`
     }
-    const response = await axios.get(API_URL + 'users', { params })
+    const response = await axios.get(url)
     return response.data
   }
 

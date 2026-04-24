@@ -30,8 +30,14 @@ async def create_tag(
         name=tag_data.name,
         color=tag_data.color,
     )
-    await tag.create()
-    return tag
+    try:
+        await tag.create()
+        return tag
+    except errors.DuplicateKeyError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Tag with that name already exists.",
+        )
 
 
 @router.get("", response_model=List[schemas.Tag])
