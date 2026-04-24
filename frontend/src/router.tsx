@@ -7,6 +7,7 @@ import { Profile } from './routes/profile'
 import Register from './routes/register'
 import Root from './routes/root'
 import SSOLogin, { loader as ssoLoader } from './routes/sso.login'
+import Tags, { loader as tagsLoader } from './routes/tags'
 import Users, { loader as usersLoader } from './routes/users'
 
 export const routes = [
@@ -38,6 +39,12 @@ export const routes = [
         Component: Users,
         HydrateFallback: HydrateFallback,
         loader: usersLoader,
+      },
+      {
+        path: 'tags',
+        Component: Tags,
+        HydrateFallback: HydrateFallback,
+        loader: tagsLoader,
       },
     ],
   },

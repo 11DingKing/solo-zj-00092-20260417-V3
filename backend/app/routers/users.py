@@ -2,7 +2,8 @@ from typing import Any, List
 from uuid import UUID
 
 from beanie.exceptions import RevisionIdWasChanged
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from beanie.operators import In
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from pydantic.networks import EmailStr
 from pymongo import errors
 
@@ -47,10 +48,64 @@ async def register_user(
 async def get_users(
     limit: int | None = 10,
     offset: int | None = 0,
+    tag_ids: List[UUID] | None = Query(None),
     admin_user: models.User = Depends(get_current_active_superuser),
 ):
-    users = await models.User.find_all().skip(offset).limit(limit).to_list()
+    """
+    Get users, optionally filtered by tags (AND logic).
+    """
+    query = models.User.find()
+    
+    if tag_ids and len(tag_ids) > 0:
+        for tag_id in tag_ids:
+            query = query.find({"tag_ids": tag_id})
+    
+    users = await query.skip(offset).limit(limit).to_list()
     return users
+
+
+@router.post("/{userid}/tags", response_model=schemas.User)
+async def add_tags_to_user(
+    userid: UUID,
+    tag_uuids: List[UUID] = Body(...),
+    admin_user: models.User = Depends(get_current_active_superuser),
+):
+    """
+    Add one or more tags to a user.
+    """
+    user = await models.User.find_one({"uuid": userid})
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    for tag_uuid in tag_uuids:
+        tag = await models.Tag.find_one({"uuid": tag_uuid})
+        if tag is None:
+            raise HTTPException(status_code=404, detail=f"Tag with UUID {tag_uuid} not found")
+        if tag_uuid not in user.tag_ids:
+            user.tag_ids.append(tag_uuid)
+    
+    await user.save()
+    return user
+
+
+@router.delete("/{userid}/tags/{tag_uuid}", response_model=schemas.User)
+async def remove_tag_from_user(
+    userid: UUID,
+    tag_uuid: UUID,
+    admin_user: models.User = Depends(get_current_active_superuser),
+):
+    """
+    Remove a tag from a user.
+    """
+    user = await models.User.find_one({"uuid": userid})
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if tag_uuid in user.tag_ids:
+        user.tag_ids.remove(tag_uuid)
+        await user.save()
+    
+    return user
 
 
 @router.get("/me", response_model=schemas.User)

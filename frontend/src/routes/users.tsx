@@ -1,9 +1,11 @@
 import DeleteIcon from '@mui/icons-material/Delete'
+import FilterListIcon from '@mui/icons-material/FilterList'
 import {
   Avatar,
   Box,
   Button,
   Checkbox,
+  Chip,
   CircularProgress,
   Container,
   Dialog,
@@ -18,6 +20,7 @@ import {
   ListItemButton,
   ListItemText,
   Paper,
+  Popover,
   Typography,
 } from '@mui/material'
 import Grid from '@mui/material/Grid'
@@ -27,52 +30,67 @@ import { redirect, useLoaderData } from 'react-router'
 import UserProfile from '../components/UserProfile'
 import { useAuth } from '../contexts/auth'
 import { useSnackBar } from '../contexts/snackbar'
+import { Tag } from '../models/tag'
 import { User } from '../models/user'
+import tagService from '../services/tag.service'
 import userService from '../services/user.service'
 
 export async function loader() {
   try {
-    const users = await userService.getUsers()
-    return { users }
+    const [users, tags] = await Promise.all([
+      userService.getUsers(),
+      tagService.getTags(),
+    ])
+    return { users, tags }
   } catch {
     return redirect('/')
   }
 }
 
 export default function Users() {
-  const { users: initialUsers } = useLoaderData() as { users: User[] }
+  const { users: initialUsers, tags: initialTags } = useLoaderData() as { users: User[]; tags: Tag[] }
   const { user: currentUser } = useAuth()
   const { showSnackBar } = useSnackBar()
   const [users, setUsers] = useState<Array<User>>(initialUsers)
+  const [tags, setTags] = useState<Array<Tag>>(initialTags)
   const [selectedUser, setSelectedUser] = useState<User | undefined>()
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
+  const [selectedFilterTags, setSelectedFilterTags] = useState<Set<string>>(new Set())
   const [toDeleteUser, setToDeleteUser] = useState<User>()
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false)
   const [openBatchDeleteDialog, setOpenBatchDeleteDialog] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [userNotFound, setUserNotFound] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLButtonElement | null>(null)
 
   useEffect(() => {
-    const refreshUsers = async () => {
+    const refreshData = async () => {
       try {
-        const refreshedUsers = await userService.getUsers()
+        const tagIds = Array.from(selectedFilterTags)
+        const [refreshedUsers, refreshedTags] = await Promise.all([
+          userService.getUsers(tagIds.length > 0 ? tagIds : undefined),
+          tagService.getTags(),
+        ])
         setUsers(refreshedUsers)
+        setTags(refreshedTags)
         if (selectedUser) {
           const stillExists = refreshedUsers.find((u) => u.uuid === selectedUser.uuid)
           if (!stillExists) {
             setSelectedUser(undefined)
             setUserNotFound(true)
+          } else {
+            setSelectedUser(stillExists)
           }
         }
       } catch (error) {
-        console.error('Failed to refresh users:', error)
+        console.error('Failed to refresh data:', error)
       }
     }
     if (refreshKey > 0) {
-      refreshUsers()
+      refreshData()
     }
-  }, [refreshKey, selectedUser])
+  }, [refreshKey, selectedFilterTags, selectedUser])
 
   const handleSelect = (user: User) => () => {
     setSelectedUser(user)
@@ -132,6 +150,23 @@ export default function Users() {
     })
   }
 
+  const handleFilterTagToggle = (tagUuid: string) => {
+    setSelectedFilterTags((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(tagUuid)) {
+        newSet.delete(tagUuid)
+      } else {
+        newSet.add(tagUuid)
+      }
+      return newSet
+    })
+  }
+
+  const handleClearFilters = () => {
+    setSelectedFilterTags(new Set())
+    setFilterAnchorEl(null)
+  }
+
   const handleSelectAll = () => {
     const deletableUserIds = users
       .filter((u) => currentUser?.uuid !== u.uuid)
@@ -186,16 +221,83 @@ export default function Users() {
     setRefreshKey((prev) => prev + 1)
   }
 
+  const getTagByUuid = (uuid: string): Tag | undefined => {
+    return tags.find((t) => t.uuid === uuid)
+  }
+
   const deletableUsersCount = users.filter((u) => currentUser?.uuid !== u.uuid).length
   const allSelected = selectedUserIds.size === deletableUsersCount && deletableUsersCount > 0
+  const filterOpen = Boolean(filterAnchorEl)
 
   return (
     <Container maxWidth='lg' sx={{ mt: 4, mb: 4 }}>
       <Grid container spacing={2} justifyContent='center'>
         <Grid size={{ xs: 12, md: 5 }}>
           <Paper>
+            <Box
+              sx={{
+                p: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                borderBottom: 1,
+                borderColor: 'divider',
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                <Typography variant='subtitle2' color='text.secondary'>
+                  共 {users.length} 个用户
+                </Typography>
+                {selectedFilterTags.size > 0 && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                    <Typography variant='body2' color='text.secondary'>
+                      筛选:
+                    </Typography>
+                    {Array.from(selectedFilterTags).map((tagUuid) => {
+                      const tag = getTagByUuid(tagUuid)
+                      return tag ? (
+                        <Chip
+                          key={tagUuid}
+                          label={tag.name}
+                          size='small'
+                          sx={{
+                            backgroundColor: tag.color,
+                            color: '#fff',
+                            fontWeight: 500,
+                          }}
+                          onDelete={() => handleFilterTagToggle(tagUuid)}
+                        />
+                      ) : null
+                    })}
+                    <Chip
+                      label='清除筛选'
+                      size='small'
+                      variant='outlined'
+                      onClick={handleClearFilters}
+                    />
+                  </Box>
+                )}
+              </Box>
+              <IconButton
+                onClick={(e) => setFilterAnchorEl(e.currentTarget)}
+                color={selectedFilterTags.size > 0 ? 'primary' : 'default'}
+                title='按标签筛选'
+              >
+                <FilterListIcon />
+              </IconButton>
+            </Box>
+
             {selectedUserIds.size > 0 && (
-              <Box sx={{ p: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: 1, borderColor: 'divider' }}>
+              <Box
+                sx={{
+                  p: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  borderBottom: 1,
+                  borderColor: 'divider',
+                }}
+              >
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
                   <Checkbox
                     checked={allSelected}
@@ -219,7 +321,7 @@ export default function Users() {
               </Box>
             )}
             <List
-              sx={{ maxHeight: 450, overflow: 'auto', '::-webkit-scrollbar': { display: 'none' } }}
+              sx={{ maxHeight: 400, overflow: 'auto', '::-webkit-scrollbar': { display: 'none' } }}
             >
               {users.map((user) => {
                 const isDeletable = currentUser?.uuid !== user.uuid
@@ -254,13 +356,43 @@ export default function Users() {
                           src={user.picture && user.picture}
                         />
                       </ListItemAvatar>
-                      <ListItemText
-                        primary={user.email}
-                        secondary={
-                          (user.first_name || user.last_name) &&
-                          user.first_name + ' ' + user.last_name
-                        }
-                      />
+                      <Box sx={{ flex: 1 }}>
+                        <ListItemText
+                          primary={user.email}
+                          secondary={
+                            (user.first_name || user.last_name) &&
+                            user.first_name + ' ' + user.last_name
+                          }
+                        />
+                        {user.tag_ids && user.tag_ids.length > 0 && (
+                          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 0.5 }}>
+                            {user.tag_ids.slice(0, 3).map((tagUuid) => {
+                              const tag = getTagByUuid(tagUuid)
+                              return tag ? (
+                                <Chip
+                                  key={tagUuid}
+                                  label={tag.name}
+                                  size='small'
+                                  sx={{
+                                    backgroundColor: tag.color,
+                                    color: '#fff',
+                                    fontSize: '0.65rem',
+                                    height: 20,
+                                  }}
+                                />
+                              ) : null
+                            })}
+                            {user.tag_ids.length > 3 && (
+                              <Chip
+                                label={`+${user.tag_ids.length - 3}`}
+                                size='small'
+                                variant='outlined'
+                                sx={{ fontSize: '0.65rem', height: 20 }}
+                              />
+                            )}
+                          </Box>
+                        )}
+                      </Box>
                     </ListItemButton>
                   </ListItem>
                 )
@@ -301,11 +433,81 @@ export default function Users() {
                 userProfile={selectedUser}
                 onUserUpdated={handleUserUpdate}
                 allowDelete={false}
+                allTags={tags}
               />
             </Paper>
-          ) : null}
+          ) : (
+            <Box
+              sx={{
+                p: 4,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                textAlign: 'center',
+              }}
+            >
+              <Typography variant='body1' color='text.secondary'>
+                点击左侧用户查看详情
+              </Typography>
+            </Box>
+          )}
         </Grid>
       </Grid>
+
+      <Popover
+        open={filterOpen}
+        anchorEl={filterAnchorEl}
+        onClose={() => setFilterAnchorEl(null)}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'left',
+        }}
+      >
+        <Box sx={{ p: 2, minWidth: 300 }}>
+          <Typography variant='subtitle2' sx={{ mb: 1 }}>
+            按标签筛选 (AND 逻辑)
+          </Typography>
+          <Typography variant='caption' color='text.secondary' sx={{ mb: 2, display: 'block' }}>
+            用户必须同时拥有所有选中的标签
+          </Typography>
+          {tags.length === 0 ? (
+            <Typography variant='body2' color='text.secondary'>
+              暂无标签
+            </Typography>
+          ) : (
+            <List sx={{ maxHeight: 300, overflow: 'auto' }}>
+              {tags.map((tag) => (
+                <ListItem
+                  key={tag.uuid}
+                  onClick={() => handleFilterTagToggle(tag.uuid)}
+                  sx={{ cursor: 'pointer' }}
+                >
+                  <Checkbox
+                    edge='start'
+                    checked={selectedFilterTags.has(tag.uuid)}
+                    onChange={() => handleFilterTagToggle(tag.uuid)}
+                  />
+                  <Chip
+                    label={tag.name}
+                    sx={{
+                      backgroundColor: tag.color,
+                      color: '#fff',
+                      fontWeight: 500,
+                    }}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          )}
+          {selectedFilterTags.size > 0 && (
+            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+              <Button onClick={handleClearFilters} size='small'>
+                清除筛选
+              </Button>
+            </Box>
+          )}
+        </Box>
+      </Popover>
 
       <Dialog
         open={openDeleteDialog}

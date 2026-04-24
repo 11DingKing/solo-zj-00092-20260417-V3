@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, List
 from uuid import UUID, uuid4
 
 from beanie import Document, Indexed
@@ -15,3 +15,4 @@ class User(Document):
     picture: str | None = None
     is_active: bool = True
     is_superuser: bool = False
+    tag_ids: List[UUID] = Field(default_factory=list)

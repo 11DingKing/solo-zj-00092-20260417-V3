@@ -19,8 +19,12 @@ class UserService {
     return response.data
   }
 
-  async getUsers(): Promise<Array<User>> {
-    const response = await axios.get(API_URL + 'users')
+  async getUsers(tagIds?: string[]): Promise<Array<User>> {
+    const params: Record<string, string[]> = {}
+    if (tagIds && tagIds.length > 0) {
+      params.tag_ids = tagIds
+    }
+    const response = await axios.get(API_URL + 'users', { params })
     return response.data
   }
 
@@ -36,6 +40,16 @@ class UserService {
 
   async deleteSelf() {
     const response = await axios.delete(API_URL + 'users/me')
+    return response.data
+  }
+
+  async addTagsToUser(userId: string, tagUuids: string[]): Promise<User> {
+    const response = await axios.post(API_URL + `users/${userId}/tags`, tagUuids)
+    return response.data
+  }
+
+  async removeTagFromUser(userId: string, tagUuid: string): Promise<User> {
+    const response = await axios.delete(API_URL + `users/${userId}/tags/${tagUuid}`)
     return response.data
   }
 }

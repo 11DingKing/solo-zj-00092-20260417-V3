@@ -8,4 +8,5 @@ export interface User {
   picture?: string
   is_active?: boolean
   is_superuser?: boolean
+  tag_ids?: string[]
 }

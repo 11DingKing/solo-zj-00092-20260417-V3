@@ -1,3 +1,4 @@
+from typing import List
 from uuid import UUID
 
 from beanie import PydanticObjectId
@@ -23,6 +24,7 @@ class PrivateUserBase(UserBase):
     is_active: bool | None = None
     is_superuser: bool | None = None
     provider: str | None = None
+    tag_ids: List[UUID] | None = None
 
 
 class UserUpdate(UserBase):
